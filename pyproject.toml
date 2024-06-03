@@ -1,0 +1,42 @@
+[tool.poetry]
+name = "so-vits-svc"
+version = "0.0.1"
+description = "Singing voice conversion."
+authors = ["d-dawg78 <dorian.desblancs@mail.mcgill.ca>"]
+readme = "README.md"
+repository = "https://github.com/d-dawg78/so-vits-svc"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.12"
+torch = "^2.1.1"
+torchaudio = "^2.1.1"
+torchcrepe = "^0.0.22"
+tqdm = "^4.64.0"
+types-tqdm = "^4.65.0.1"
+fairseq = "^0.12.2"
+transformers = "^4.41.2"
+einops = "^0.8.0"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "*"
+ruff = "*"
+pytest = "*"
+pytest-asyncio = "*"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+
+[tool.mypy]
+strict = true
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E741", "E742", "E743", "F", "I"]
+ignore = ["T201", "T203"]
