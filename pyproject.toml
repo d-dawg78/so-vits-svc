@@ -13,9 +13,9 @@ torchaudio = "^2.1.1"
 torchcrepe = "^0.0.22"
 tqdm = "^4.64.0"
 types-tqdm = "^4.65.0.1"
-fairseq = "^0.12.2"
 transformers = "^4.41.2"
 einops = "^0.8.0"
+fairseq = "^0.12.2"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "*"
