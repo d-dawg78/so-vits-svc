@@ -166,3 +166,6 @@ cython_debug/
 *.npy
 *.pt
 *.json
+
+# Ignore certain directories
+dataset/*
