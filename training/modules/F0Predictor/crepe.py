@@ -1,19 +1,16 @@
-from typing import Optional, Union
+from typing import Any, Literal, Optional, Tuple
 
-try:
-    from typing import Literal
-except Exception:
-    from typing_extensions import Literal
 import numpy as np
+import numpy.typing as npt
 import torch
-import torchcrepe
+import torchcrepe  # type: ignore
 from torch import nn
 from torch.nn import functional as F
 
 # from:https://github.com/fishaudio/fish-diffusion
 
 
-def repeat_expand(content: Union[torch.Tensor, np.ndarray], target_len: int, mode: str = "nearest"):
+def repeat_expand(content: torch.Tensor, target_len: int, mode: str = "nearest") -> Any:
     """Repeat content to target length.
     This is a wrapper of torch.nn.functional.interpolate.
 
@@ -35,19 +32,21 @@ def repeat_expand(content: Union[torch.Tensor, np.ndarray], target_len: int, mod
 
     assert content.ndim == 3
 
-    is_np = isinstance(content, np.ndarray)
-    if is_np:
-        content = torch.from_numpy(content)
+    # is_np = isinstance(content, np.ndarray)
+    # if is_np:
+    #     content = torch.from_numpy(content)
 
     results = torch.nn.functional.interpolate(content, size=target_len, mode=mode)
 
-    if is_np:
-        results = results.numpy()
+    # if is_np:
+    #     results = results.numpy()
 
     if ndim == 1:
         return results[0, 0]
     elif ndim == 2:
         return results[0]
+    else:
+        return results
 
 
 class BasePitchExtractor:
@@ -72,20 +71,22 @@ class BasePitchExtractor:
         self.f0_max = f0_max
         self.keep_zeros = keep_zeros
 
-    def __call__(self, x, sampling_rate=44100, pad_to=None):
+    def __call__(self, x: torch.Tensor, sampling_rate: int = 44100, pad_to: Optional[int] = None) -> Any:
         raise NotImplementedError("BasePitchExtractor is not callable.")
 
-    def post_process(self, x, sampling_rate, f0, pad_to):
-        if isinstance(f0, np.ndarray):
-            f0 = torch.from_numpy(f0).float().to(x.device)
+    def post_process(
+        self, sampling_rate: int, f0: torch.Tensor, pad_to: Optional[int]
+    ) -> Tuple[npt.NDArray[np.float32], Optional[npt.NDArray[np.float32]]]:
+        # if isinstance(f0, np.ndarray):
+        #     f0 = torch.from_numpy(f0).float().to(x.device)
 
         if pad_to is None:
-            return f0
+            return f0.cpu().numpy(), None
 
         f0 = repeat_expand(f0, pad_to)
 
         if self.keep_zeros:
-            return f0
+            return f0.cpu().numpy(), None
 
         vuv_vector = torch.zeros_like(f0)
         vuv_vector[f0 > 0.0] = 1.0
@@ -93,26 +94,26 @@ class BasePitchExtractor:
 
         # 去掉0频率, 并线性插值
         nzindex = torch.nonzero(f0).squeeze()
-        f0 = torch.index_select(f0, dim=0, index=nzindex).cpu().numpy()
+        f0_np = torch.index_select(f0, dim=0, index=nzindex).cpu().numpy()
         time_org = self.hop_length / sampling_rate * nzindex.cpu().numpy()
         time_frame = np.arange(pad_to) * self.hop_length / sampling_rate
 
         vuv_vector = F.interpolate(vuv_vector[None, None, :], size=pad_to)[0][0]
 
-        if f0.shape[0] <= 0:
-            return torch.zeros(pad_to, dtype=torch.float, device=x.device), vuv_vector.cpu().numpy()
-        if f0.shape[0] == 1:
-            return torch.ones(pad_to, dtype=torch.float, device=x.device) * f0[0], vuv_vector.cpu().numpy()
+        if f0_np.shape[0] <= 0:
+            return torch.zeros(pad_to, dtype=torch.float).numpy(), vuv_vector.cpu().numpy()
+        if f0_np.shape[0] == 1:
+            return torch.ones(pad_to, dtype=torch.float).numpy() * f0_np[0], vuv_vector.cpu().numpy()
 
         # 大概可以用 torch 重写?
-        f0 = np.interp(time_frame, time_org, f0, left=f0[0], right=f0[-1])
+        f0_np = np.interp(time_frame, time_org, f0_np, left=f0_np[0], right=f0_np[-1])
         # vuv_vector = np.ceil(scipy.ndimage.zoom(vuv_vector,pad_to/len(vuv_vector),order = 0))
 
-        return f0, vuv_vector.cpu().numpy()
+        return f0_np, vuv_vector.cpu().numpy()
 
 
 class MaskedAvgPool1d(nn.Module):
-    def __init__(self, kernel_size: int, stride: Optional[int] = None, padding: Optional[int] = 0):
+    def __init__(self, kernel_size: int, stride: Optional[int] = None, padding: int = 0):
         """An implementation of mean pooling that supports masked values.
 
         Args:
@@ -126,7 +127,7 @@ class MaskedAvgPool1d(nn.Module):
         self.stride = stride or kernel_size
         self.padding = padding
 
-    def forward(self, x, mask=None):
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         ndim = x.dim()
         if ndim == 2:
             x = x.unsqueeze(1)
@@ -176,7 +177,7 @@ class MaskedAvgPool1d(nn.Module):
 
 
 class MaskedMedianPool1d(nn.Module):
-    def __init__(self, kernel_size: int, stride: Optional[int] = None, padding: Optional[int] = 0):
+    def __init__(self, kernel_size: int, stride: Optional[int] = None, padding: int = 0):
         """An implementation of median pooling that supports masked values.
 
         This implementation is inspired by the median pooling implementation in
@@ -193,7 +194,7 @@ class MaskedMedianPool1d(nn.Module):
         self.stride = stride or kernel_size
         self.padding = padding
 
-    def forward(self, x, mask=None):
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         ndim = x.dim()
         if ndim == 2:
             x = x.unsqueeze(1)
@@ -249,10 +250,10 @@ class CrepePitchExtractor(BasePitchExtractor):
         f0_max: float = 1100.0,
         threshold: float = 0.05,
         keep_zeros: bool = False,
-        device=None,
+        device: Optional[str] = None,
         model: Literal["full", "tiny"] = "full",
         use_fast_filters: bool = True,
-        decoder="viterbi",
+        decoder: str = "viterbi",
     ):
         super().__init__(hop_length, f0_min, f0_max, keep_zeros)
         if decoder == "viterbi":
@@ -262,7 +263,8 @@ class CrepePitchExtractor(BasePitchExtractor):
         elif decoder == "weighted_argmax":
             self.decoder = torchcrepe.decode.weighted_argmax
         else:
-            raise "Unknown decoder"
+            raise Exception("Unknown decoder")
+
         self.threshold = threshold
         self.model = model
         self.use_fast_filters = use_fast_filters
@@ -275,9 +277,10 @@ class CrepePitchExtractor(BasePitchExtractor):
             self.median_filter = MaskedMedianPool1d(3, 1, 1).to(device)
             self.mean_filter = MaskedAvgPool1d(3, 1, 1).to(device)
 
-    def __call__(self, x, sampling_rate=44100, pad_to=None):
+    def __call__(
+        self, x: torch.Tensor, sampling_rate: int = 44100, pad_to: Optional[int] = None
+    ) -> Tuple[npt.NDArray[np.float32], Optional[npt.NDArray[np.float32]]]:
         """Extract pitch using crepe.
-
 
         Args:
             x (torch.Tensor): Audio signal, shape (1, T).
@@ -326,4 +329,4 @@ class CrepePitchExtractor(BasePitchExtractor):
             rtn = f0.cpu().numpy() if pad_to is None else np.zeros(pad_to)
             return rtn, rtn
 
-        return self.post_process(x, sampling_rate, f0, pad_to)
+        return self.post_process(sampling_rate, f0, pad_to)

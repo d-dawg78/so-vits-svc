@@ -1,10 +1,10 @@
-from typing import Any
+from typing import Any, Optional
 
 import torch
 
 
 class F0Predictor(object):
-    def compute_f0(self, wav: torch.Tensor, p_len: int) -> Any:
+    def compute_f0(self, wav: torch.Tensor, p_len: Optional[int]) -> Any:
         """
         input: wav:[signal_length]
                p_len:int
@@ -12,7 +12,7 @@ class F0Predictor(object):
         """
         pass
 
-    def compute_f0_uv(self, wav: torch.Tensor, p_len: int) -> Any:
+    def compute_f0_uv(self, wav: torch.Tensor, p_len: Optional[int]) -> Any:
         """
         input: wav:[signal_length]
                p_len:int
